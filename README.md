@@ -53,15 +53,10 @@ Alternatively, for computational reasons (the scripts can be executed in paralle
 
 where BOSMOS is executed with the configuration {--randomd=False --truelik=False --ado=False --minebed=False}, ADO with {--randomd=False --truelik=True --ado=True --minebed=False}, EI with {--randomd=True --truelik=True --ado=False --minebed=False) and MINEBED with {--randomd=False --truelik=False --ado=False --minebed=True}. We recommend training synthetic participants with task.hyper['n_participants']=100 in a single process, and then parallelize using batches of 5 (task.hyper['n_participants'] = 5 in test cases files). 
 
-NOTE: ```experiment_id``` automatically adjust experiment filenames, so for each batch its value should be unique.
+The results can be printed through the command:
 
-## Citation
+```python3 memory.py --x=l```
 
-'''
+which may take up to two hours for the signal detection task.
 
-'''
-
-the arxiv version of the paper: LINK
-
-
-
+NOTE: ```experiment_id``` automatically adjusts filenames of the experiments, meanning that for each batch its value should be unique.
