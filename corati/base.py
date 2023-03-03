@@ -16,6 +16,66 @@ from corati.vizualization import plot_parameter_marginals, plot_learning_curve
 
 precision=np.float32
 
+def instantiate_participant_model(task):
+    '''
+    Generate participant for a given task.
+    Parameters
+    ----------
+    task : Task
+    Return Model
+    '''
+    keys = list(task.model_priors.keys())
+    probs = list(task.model_priors.values())
+
+    model_name = np.random.choice(keys, 1, p=probs)
+    model = task.instantiate_model(model_name)
+    return model
+
+
+def sample_model_instances(task, parameter_particles, model_priors, sample_size=1):
+    '''
+    Sample a set of models from the current particle set of parameters.
+    Parameters
+    ----------
+    task : Task
+    parameter_particles : dict
+    (optional) sample_size : int
+    Return list, of Model instances
+    '''
+    sampled_models = []
+    keys = list(model_priors.keys())
+    probs = list(model_priors.values())
+
+    for _ in range(sample_size):
+        model_name = np.random.choice(keys, 1, p=probs)[0]
+        model = task.instantiate_model(model_name)
+        model.pars = assign_parameter_sample(model, parameter_particles[model_name])
+        sampled_models.append(model)
+    return sampled_models
+
+
+def assign_parameter_sample(model, parameter_particles):
+    '''
+    Sample parameters from a parameter particle set and and assign the sampled values 
+    to the model
+    
+    Parameters
+    ----------
+    model : Model, model for the task
+    parameter_particles : dict, of model parameters, e.g. 
+        {'par1': {'value': float or tuple, 'bounds': list, 'levels': int}, ... }
+    size : how many samples to sample (default 1)
+    Return dict (same as model.pars)
+    '''
+    first_key = list(parameter_particles.keys())[0]
+    N = len( parameter_particles[first_key]['value'])
+    sample_ind = np.random.randint(0, N)
+    for key in parameter_particles.keys():
+        if isinstance(parameter_particles[key]['value'], pd.Series):
+            model.pars[key]['value'] = parameter_particles[key]['value'].values[sample_ind]
+    return model.pars
+
+
 
 class BaseModel():
     '''

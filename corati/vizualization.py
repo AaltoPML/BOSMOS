@@ -440,7 +440,7 @@ def show_design_GP(model, train_x, train_obj, bounds):
     plt.show()
 
 
-def create_plots_for_paper(all_dict, output_dir='/'):
+def print_logs(all_dict, output_dir='/'):
     sns.set_theme()
     sns.color_palette()
     colors = ['orange', 'green', 'purple', 'brown', 'pink', 'olive', 'cyan']
@@ -451,7 +451,7 @@ def create_plots_for_paper(all_dict, output_dir='/'):
     table_ticks = [0, 1, 3, 19, 99]
 
     # ===================================
-    # 1. behavior fitness: (dist, trials)
+    # statistics
     # ===================================
     print('\n\n 1. behavior fitness: (dist, trials) ')
     fig = plt.figure()
@@ -461,32 +461,19 @@ def create_plots_for_paper(all_dict, output_dir='/'):
         if str(filename) == 'sp':
             rand_model_fitness = all_dict[filename]['rand_model_fitness'].flatten()
             true_model_fitness = all_dict[filename]['true_model_fitness'].flatten()
-            
-            # print(np.array(rand_model_fitness).shape)
-            # print(np.array(true_model_fitness).shape)
-            # print(rand_model_fitness)
-            # print(true_model_fitness)
-
             plt.axhline(y=np.mean(rand_model_fitness), color='r', linestyle='-.', label='Random model')
             plt.axhline(y=np.mean(true_model_fitness), color='b', linestyle='-.', label='True model')
-            # plt.plot(range(len(rand_model_fitness)), rand_model_fitness, label='Random model')
-            # plt.plot(range(len(true_model_fitness)), true_model_fitness, label='True model')
-            # plt.fill_between(x_ticks, transposed_means[i,:]-2*transposed_stds[i,:], \
-            #    transposed_means[i,:]+2*transposed_stds[i,:], color='grey', alpha=0.2)
-
+            
         rand_model_fitness = all_dict[filename]['rand_model_fitness'].flatten()
-        est_fitness_traj = all_dict[filename]['fitness_trajectories'][:, :, 2].transpose()
-        # print( np.shape(est_fitness_traj), np.shape(rand_model_fitness))
-        # est_fitness_traj = np.insert(est_fitness_traj, 0, rand_model_fitness)
-        
+        est_fitness_traj = all_dict[filename]['fitness_trajectories'][:, :, 2].transpose()  
         x_ticks = range(1, len(est_fitness_traj) + 1)
 
         mean, std = np.mean(est_fitness_traj, axis=1), np.std(est_fitness_traj, axis=1)
         # print(np.shape(mean))
         plt.plot(x_ticks, np.mean(est_fitness_traj, axis=1), color=colors[i], label=legends[filename])
         plt.fill_between(x_ticks, mean - std, mean + std, color=colors[i], alpha=0.1)
-        print('Behavioral fitness (mean +- std):')
-        print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
+        # print('Behavioral fitness (mean +- std):')
+        # print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
         
         dist_traj = all_dict[filename]['dist_trajectories'].transpose()[:, 1:]
         all_model_choices = all_dict[filename]['all_model_choices'].transpose()[:, 1:]
@@ -497,21 +484,11 @@ def create_plots_for_paper(all_dict, output_dir='/'):
         for model_choices, true_model_name in zip(temp_model_choices, true_models):
             mask.append( [ true_model_name == model_name for model_name in model_choices ] )
         mask = np.array(mask).transpose()
-        # print(list(dist_traj))
         
         mean, std = np.mean(dist_traj, axis=1), np.std(dist_traj, axis=1)
         print('Complete parameter estimate error (mean +- std):')
         print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
         
-        # nan_mask = np.array(mask, copy=True)
-        # for i, sub_mask in zip(range(len(nan_mask)), nan_mask):  
-        #    sub_mask[~sub_mask] = np.nan
-        #    print(sub_mask)
-        #    nan_mask[i] = sub_mask
-        # nan_mask[nan_mask == False] = np.nan
-        # print(nan_mask)
-        # print(mask)
-        # dist_traj = dist_traj * nan_mask
         dist_traj[~mask] = np.nan
         print(str(dist_traj))
         
@@ -547,141 +524,6 @@ def create_plots_for_paper(all_dict, output_dir='/'):
     sorted_handles = [x for _, x in sorted(zip(labels, handles))] # sort the handles based on the average which is on a list
     plt.legend(sorted_handles,sorted_legends) # display the handles and the labels on the side
     
-    plt.savefig(output_dir + 'plot-1.png', dpi=300)
+    # plt.savefig(output_dir + 'plot-1.png', dpi=300)
     plt.close()
 
-    # ===================================
-    # 2. model comparison: subplots for N models
-    # ===================================
-    print('\n\n 2. model comparison: subplots for N models ')
-    fig = plt.figure()
-    axes = []
-    for i, filename in zip( range(len(all_dict)), all_dict):
-        model_keys = all_dict[filename]['model_posterior_keys'].flatten()
-        true_model_list = all_dict[filename]['true_models']
-        print(filename, model_keys)
-
-        # create figure if it does not exist
-        if not axes:
-            num_models = len(model_keys)
-            axes = []
-
-            for k, model_key in zip( range(num_models), model_keys):
-                axes.append(plt.subplot2grid((1, num_models), (0, k)))
-           
-        for j, model_key in zip( range(num_models), model_keys):
-            print(model_key, j, np.shape(all_dict[filename]['model_posterior']))
-            model_posterior = all_dict[filename]['model_posterior'].transpose()[j, :, :]
-            _, num_participants = np.shape(model_posterior)
-            print(np.shape(model_posterior))
-
-            model_key_mask = [true_key == model_key for true_key in true_model_list] 
-            model_key_mask = model_key_mask[:num_participants]
-
-            model_posterior = model_posterior[:, model_key_mask]
-            print(model_key, np.shape(model_posterior), model_posterior[-1])
-
-            mean, std = np.mean(model_posterior, axis=1), np.std(model_posterior, axis=1)
-            
-            # sns.lineplot(model_posterior, ax=axes[j], legend=filename) 
-            axes[j].plot(x_ticks, mean, label=legends[filename], color=colors[i])
-            axes[j].fill_between(x_ticks, mean - std, mean + std, color=colors[i], alpha=0.1)
-            print('Model posterior (mean +- std):')
-            print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
-            axes[j].set_title(model_key)
-
-            if j == 0:
-                axes[j].set_ylabel(r'$p(m | \mathcal{D}_t)$')
-            axes[j].set_ylim([0.,1.1])
-            axes[j].set_xlabel('Trials (t)')
-
-    plt.tight_layout()
-    
-    handles,labels = plt.gca().get_legend_handles_labels()
-    sorted_legends = [x for x in sorted(labels)] # sort the labels based on the average which is on a list
-    sorted_handles = [x for _, x in sorted(zip(labels, handles))] # sort the handles based on the average which is on a list
-    plt.legend(sorted_handles,sorted_legends) # display the handles and the labels on the side
-    
-    plt.savefig(output_dir + 'plot-2.png', dpi=300)
-    plt.close()
-
-
-    # 3. identifiability (var, perf)
-    print('\n\n 3. identifiability (var, perf) ')
-    fig = plt.figure()
-    plot_pd = []
-    method_num = 0
-    for filename in all_dict:
-        # model_variance = np.sum(all_dict[filename]['model_variance'], axis=1)
-        rmse_pars = all_dict[filename]['dist_trajectories'][:, -1]
-        print(np.shape(rmse_pars))
-        est_model_fitness = all_dict[filename]['est_model_fitness'].flatten()
-        temp_labels = [ legends[filename]] *  len(rmse_pars)
-        plot_pd += [{'RMSE of parameter estimates': i, 'Behavioral fitness RMSE': j, 'Method': k} for i, j, k in zip(rmse_pars, est_model_fitness, temp_labels)]
-        method_num += 1
-
-    
-    plot_pd = pd.DataFrame.from_dict(plot_pd)
-    # print(plot_pd)
-    # sns.kdeplot( model_variance, est_model_fitness, fill=True)
-    markers = ['x','o','v','^','<']
-    g = sns.jointplot(data=plot_pd, x='RMSE of parameter estimates', y='Behavioral fitness RMSE', hue='Method', xlim=[0.,1.1], palette=colors[:method_num], s=20, alpha=.8) # marker=markers, color=colors) #  ylim=[0.,1.]
-    # g.ax_joint.scatter(data=plot_pd, c=colors, m=markers)
-    
-    handles,labels = g.ax_joint.get_legend_handles_labels()
-    # g.ax_joint.legend(title='', label_order = sorted(g.ax_joint._legend_data.keys(), key = int))
-    # g.ax_joint.add_legend(label_order = sorted(ax._legend_data.keys(), key = int))
-    # plt.scatter(model_variance, est_model_fitness, label=filename, linewidths=1.)
-    # plt.xlabel('RMSE of parameter estimate')
-    # plt.ylabel('Behavioral fitness error')
-    # plt.tight_layout()
-    
-    # handles,labels = plt.gca().get_legend_handles_labels()
-    sorted_legends = [x for x in sorted(labels)] # sort the labels based on the average which is on a list
-    sorted_handles = [x for _, x in sorted(zip(labels, handles))] # sort the handles based on the average which is on a list
-    g.ax_joint.legend(sorted_handles,sorted_legends) # display the handles and the labels on the side
-    
-    plt.savefig(output_dir + 'plot-3.png', dpi=300)
-    plt.close()
-
-
-    # 4. design histograms: subplots for each design
-    print('\n\n 4. design histograms: subplots for each design ')
-    fig = plt.figure()
-    for filename in all_dict:
-        all_designs = all_dict[filename]['all_designs'] # .transpose()
-        _, num_design_steps, _ = np.shape(all_designs)
-        print(filename, np.shape(all_designs), np.mean(all_designs[:,0,:], axis=0))
-
-        plot_count = 0
-        for i in range(num_design_steps):
-            if i >= 5 and i != num_design_steps - 1:
-                continue
-            ax = plt.subplot2grid((2, 3), (int(plot_count/3), plot_count%3))
-
-            print(np.shape(all_designs[:, plot_count, :]))
-
-            ax = sns.histplot(all_designs[:, plot_count, 0], ax=ax, kde=False, fill=True, legend= str(i + 1) + ' Trial:') 
-            # sns.kdeplot(all_designs[:, plot_count, 0], ax=ax, fill=True, linewidth=0) 
-            # ax.hist(all_designs[:, plot_count, :]) 
-            # ax.set_title(str(i + 1) + ' Trial:')
-
-            ax.title.set_text('t = ' + str(i + 1))
-            if plot_count / 2. > 1:
-                plt.xlabel('Design')
-            else:
-                plt.xlabel('')
-
-            if plot_count % 3 == 0:
-                plt.ylabel('Count')
-            else:
-                plt.ylabel('')
-
-            plot_count += 1
-
-        plt.tight_layout()
-        # plt.legend()
-        
-        plt.savefig(output_dir + 'plot-4-' + str(filename) + '.png', dpi=300)
-        plt.close()
-    pass

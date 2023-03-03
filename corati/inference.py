@@ -5,6 +5,7 @@ import elfi, GPy
 import numpy as np
 import pandas as pd
 import copy
+import scipy
 
 from elfi.methods.bo.gpy_regression import GPyRegression
 from elfi.methods.bo.acquisition import LCBSC, UniformAcquisition
@@ -143,6 +144,7 @@ class ElfiSim:
         print('Inference for parameters: ', self.keys)
         self.samples_in_prior = len(self.params[self.keys[0]]['value'])
         self.param_dim = len(self.keys)
+        self.stored_summaries = []
         return
 
 
@@ -173,6 +175,7 @@ class ElfiSim:
                 result.append(trace)
             results.append(result)
         
+        self.stored_summaries.append(self.get_summary(results))
         self.cur_budget += len(results)
         # print(f'Simulated {self.cur_budget} out of {self.total_budget}')
         return results
@@ -199,9 +202,9 @@ class ElfiSim:
             for j in range(len(obs)):   
                 data = obs[j]
                 summary = self.model.get_summary_statistics(data)
-                result.append([summary])
-            results.append(np.mean(result))
-        return results
+                result.append(summary)
+            results.append(np.mean(result, axis=0))
+        return np.array(results)
 
 
     def get_model(self, priors, data=None):
@@ -416,7 +419,7 @@ def infer(model, pars, expt, budget, data=None, seed=0):
 from sklearn import preprocessing
 from sklearn.neighbors import KernelDensity
 import arviz as az
-
+from scipy.stats import expon
 
 def find_kde_peak(df):
     '''
@@ -430,6 +433,18 @@ def find_kde_peak(df):
     x_min = x_scaled[np.argmax( kde.score_samples(x_scaled))]
     x_min = min_max_scaler.inverse_transform([x_min])[0]
     return x_min
+
+def euclidean_distance(x, y):
+    d = np.linalg.norm(x - y) # np.sqrt((x - y)**2, axis=1))
+    return d + 1e-10
+
+def jacobian(x, y):
+    J = []
+    for xi in x:
+        d = euclidean_distance(xi, y)
+        diff = xi - y + 1e-10
+        J.append(np.divide(diff, d)[0])
+    return np.array(J).transpose()
 
 
 def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, budget=20, it=None):
@@ -448,12 +463,11 @@ def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, 
 
     Return pd.DataFrame
     '''
-    
     elfi_sim, elfi_model, post = infer(model=copy.deepcopy(model), 
                                     pars=copy.deepcopy(theta), 
                                     expt=expt, budget=budget, data=data)
     
-    unscaled_discr = post.model.Y
+    # unscaled_discr = post.model.Y
     # x_scaler = preprocessing.StandardScaler().fit(post.model.X)
     y_scaler = preprocessing.StandardScaler().fit(post.model.Y)
     # x_scaled = x_scaler.transform(post.model.X)
@@ -473,29 +487,23 @@ def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, 
             n_start_points=300,
             random_state=post.random_state)
         
-        post.threshold = np.max([minval, np.min(post.model.Y)]) # np.min(post.model.Y) # minval # np.quantile(y_scaled, 0.5) # + post.model.predict(minloc)[1][0,0], np.min(post.model.Y)]) #  max(minval, 1e-6) # + 3*post.model.predict(minloc)[1][0,0]# max(minval, 3*post.model.predict(minloc)[1][0,0]) #  #  np.quantile(y_scaled, 0.5) # 
+        post.threshold = np.max([minval, np.min(post.model.Y)])
     print('Extracting posterior...')
 
     post_samples, particles, weights = sample_posterior(post, elfi_sim, true_lik, data, model, expt, None)
-    
-    if true_lik is None:
-        unnorm_exp = post._unnormalized_likelihood(post.model.X).flatten()
-        norm_exp = unnorm_exp / np.sum(unnorm_exp)
-
-        if np.isnan(np.sum(norm_exp)):
-            norm_exp = [1.] * len(unnorm_exp)
-
-        discr = unscaled_discr.flatten() # np.exp
-        # print('Norm_exp, discr:', norm_exp, discr)
-        # print('Mult:', np.multiply(norm_exp, discr ))
-        weights /= np.sum( np.multiply(norm_exp, discr))# np.exp(norm) # np.abs(post.threshold) # why the threshold is so small when we try to adjust it? Posteriors won't slowly converge
-
-        if np.isnan(np.sum(weights)) or np.isposinf(np.sum(weights)):
-            weights = [1e-10] * len(weights)
-
     minloc = find_kde_peak(post_samples)
     estimate = {key : x for x, key in zip(minloc, elfi_sim.keys)}
-    
+
+    if true_lik is None:
+        # calculate the expectation for the the marginal likelihood:
+        N = elfi_sim.samples_in_prior
+        theta_samples = post.prior.rvs(size=N)
+        if theta_samples.ndim == 1:
+            theta_samples = theta_samples.reshape(N, -1)
+
+        ms, vs = post.model._gp.predict(theta_samples)
+        ys = y_scaler.inverse_transform(ms)
+
     plot_theta = copy.deepcopy(theta)
     particles_dict = copy.deepcopy(theta) 
     for key in elfi_sim.keys:
@@ -514,8 +522,8 @@ def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, 
         # plot_parameter_marginals(plot_theta, estimate, output_dir=participant.hyper['output_dir'], model_name=model.name, it=model.name + str(it), thr=np.sum(weights)) #np.sum(weights))
         pass
 
-    print('THR: ', post.threshold, np.exp(post.threshold))
+    # print('THR: ', post.threshold, np.exp(post.threshold))
 
-    return particles_dict, estimate, weights
+    return particles_dict, estimate, weights, ys # expected_value
 
     

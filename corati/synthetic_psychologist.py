@@ -13,12 +13,13 @@ from pathlib import Path
 #from corati.inference import sample_particles, infer_parameters
 from corati.design import Exp_designer_single, get_design_bounds
 from corati.inference import infer_parameters
-from corati.model_selection import sample_model_instances, instantiate_participant_model, \
-	train_model_selection, assign_parameter_sample, update_model_prior
+from corati.base import instantiate_participant_model, sample_model_instances, assign_parameter_sample
+#from corati.model_selection import sample_model_instances, instantiate_participant_model, \
+#	train_model_selection, assign_parameter_sample, update_model_prior
 
 from corati.vizualization import plot_participant_convergence, plot_correlation, \
 	plot_convergence, plot_model_marginals, plot_model_results, plot_designs, plot_verification, \
-		plot_behavioral_fit, plot_behavioral_convergence, plot_model_convergence, create_plots_for_paper
+		plot_behavioral_fit, plot_behavioral_convergence, plot_model_convergence, print_logs
 
 # -------------------------------------
 
@@ -268,6 +269,7 @@ def design_conduct_infer( task, participant, participants):
 		
 		# 3: update current beliefs about the models and parameters
 		estimate = dict()
+		ys, exps = {}, {}
 		for key in list(model_posterior.keys()):
 			# skip the updates if a model has a very low probability for computational reasons
 			if model_posterior[key] < 0.02:
@@ -325,9 +327,33 @@ def design_conduct_infer( task, participant, participants):
 				print(key, parameter_particles[key])
 				
 				# run parameter inference procedure (BOLFI is used if true likelihood is not used) 
-				parameter_particles[key], estimate[key], weights[key] = infer_parameters( data, model, parameter_particles[key], expt, participant, 
+				parameter_particles[key], estimate[key], weights[key], ys[key] = infer_parameters( data, model, parameter_particles[key], expt, participant, 
 											true_lik=true_lik, budget=budget, it=i+1) # Alex prior=prior[cur_model_choice]
+				
+				# this part calculates true marginal likelihood in simple_example for the debugging purposes
+				if model.name == 'pos_mean':
+					data_ = data['outcome'][0]
+					true_marg_lkl =  (-expt) * ( scipy.special.erf((np.sqrt(2)*data_ - 5*np.sqrt(2)) / (2*expt)) - scipy.special.erf(data_ / (np.sqrt(2)*expt)) ) / (2*np.abs(expt))
+					print(f'True marginal likelihood: { true_marg_lkl }')
+				elif model.name == 'neg_mean':
+					data_ = data['outcome'][0]
+					true_marg_lkl =  (expt) * ( scipy.special.erf((np.sqrt(2)*data_ + 5*np.sqrt(2)) / (2*expt)) - scipy.special.erf(data_ / (np.sqrt(2)*expt)) ) / (2*np.abs(expt))
+					print(f'True marginal likelihood: {true_marg_lkl}')
 		
+		# calculate and apply the marginal likelihood:
+		if task.hyper['minebed'] == False and task.hyper['true_likelihood'] == False:
+			# determine the tolerance threshold as the minimum expectation among the models
+			for key in list(ys.keys()):
+				exps[key] = np.mean(ys[key])
+			epsilon_m = min( exps.values() )
+			
+			print(f'Epsilon for the marginal likelihood: {epsilon_m}')
+			for key in list(ys.keys()):
+				kappa_array = [ scipy.stats.norm.pdf( x, 0, epsilon_m + 1e-10)  for x in ys[key]]
+				weights[key] *= np.mean(kappa_array)
+				if np.isnan(np.sum(weights[key])) or np.isposinf(np.sum(weights[key])):
+					weights[key] = [1e-10] * len(weights[key])
+
 		# if we have more than one model, then we also do model selection		
 		if len(model_posterior) > 1:
 			# resample beliefs according to their likelihood approximations (weights)
@@ -720,8 +746,10 @@ def verify_saved_models(task, all_dict):
 	# for all stored estimated models
 	for filename in all_dict:
 		print(filename)
-		if filename != 'minebed_bic': # and filename != 'sp' :
-			continue
+		# TODO: this needs to be removed to calculate behavioral fitness error
+		# for all methods, although it would take much more time
+		# if filename != 'sp' and filename != 'sp_bic': # filename != 'minebed_bic': # and 
+		#	continue
 			
 		# prepare estimated models and their parameters
 		all_model_choices = all_dict[filename]['all_model_choices'][1:]
@@ -741,7 +769,7 @@ def verify_saved_models(task, all_dict):
 				participant.max_episode_steps = 10
 				data_part = conduct_experiment( participant, expt, False )
 				data_part = participant.get_summary_statistics(data_part)
-					.
+					
 				j = -1
 				sel_par_dist[-1].append([])
 				for model_choice, estimate in zip(all_model_choices[i], all_estimates[i]):
@@ -875,11 +903,12 @@ def switch(model, x='empty'):
 							del all_files[meth]['__version__']
 							del all_files[meth]['__globals__']
 			print(Path('').cwd())
-			plot = False
-			# either plot or calculate behavioural fitness
-			if plot:
-				create_plots_for_paper(all_files, output_dir=str(Path('').cwd()) + '/' )
+			only_plot = False
+			# either plot or also calculate behavioural fitness
+			if only_plot:
+				print_logs(all_files, output_dir=str(Path('').cwd()) + '/' )
 			else:
+				print_logs(all_files, output_dir=str(Path('').cwd()) + '/' )
 				verify_saved_models(model, all_files)
 		elif x == 'g':
 			generate_synthetic_participants( n_participants, model )
