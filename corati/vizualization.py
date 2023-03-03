@@ -453,7 +453,7 @@ def print_logs(all_dict, output_dir='/'):
     # ===================================
     # statistics
     # ===================================
-    print('\n\n 1. behavior fitness: (dist, trials) ')
+    # print('\n\n 1. behavior fitness: (dist, trials) ')
     fig = plt.figure()
     for i, filename in zip(range(len(all_dict)), all_dict):
         print('')
@@ -486,11 +486,11 @@ def print_logs(all_dict, output_dir='/'):
         mask = np.array(mask).transpose()
         
         mean, std = np.mean(dist_traj, axis=1), np.std(dist_traj, axis=1)
-        print('Complete parameter estimate error (mean +- std):')
-        print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
+        # print('Complete parameter estimate error (mean +- std):')
+        # print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
         
         dist_traj[~mask] = np.nan
-        print(str(dist_traj))
+        # print(str(dist_traj))
         
         mean, std = np.nanmean(dist_traj, axis=1), np.nanstd(dist_traj, axis=1)
         print('Parameter estimate error (mean +- std):')
@@ -506,8 +506,8 @@ def print_logs(all_dict, output_dir='/'):
             print( [r'{m:.2f}'.format(m=float(m)/ np.sum(model_mask)) for item_id, m in zip(range(len(model_accuracy)), model_accuracy) if item_id in table_ticks ])
         
         # print(np.shape(dist_traj), dist_traj[-1])
-        print(np.shape(all_model_choices), all_model_choices[-1])
-        print(np.shape(true_models), true_models)
+        # print(np.shape(all_model_choices), all_model_choices[-1])
+        # print(np.shape(true_models), true_models)
         # print(np.shape(mask), mask[-1])
         
         times = all_dict[filename]['time'].flatten()
