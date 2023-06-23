@@ -695,7 +695,9 @@ class RiskyChoiceTask(BaseTask):
             'output_dim':               1,
             'participant_shift':        1,
             'model_sel_rule':		'map',
-            'record_posterior':	True
+            'record_posterior':		True,
+            'misspecify':		0,
+            'observ_noise':		0
 		}
         print(THIS_FILE)
 
@@ -780,6 +782,8 @@ if __name__ == "__main__":
     parser.add_argument('--ado')
     parser.add_argument('--minebed')
     parser.add_argument('--rule')
+    parser.add_argument('--misspecify')
+    parser.add_argument('--noise')
     args = parser.parse_args()
 
     task=RiskyChoiceTask()
@@ -789,7 +793,13 @@ if __name__ == "__main__":
     task.hyper['ado'] = args.ado=='True' if args.ado else task.hyper['ado']
     task.hyper['minebed'] = args.minebed=='True' if args.ado else task.hyper['minebed']
     task.hyper['model_sel_rule'] = args.rule if args.rule else task.hyper['model_sel_rule']
+    task.hyper['misspecify'] = int(args.misspecify) if args.misspecify else task.hyper['misspecify']
+    task.hyper['observ_noise'] = float(args.noise) if args.noise else task.hyper['observ_noise']
     
+    if task.hyper['observ_noise'] > 0:
+    	task.hyper['n_prediction_trials'] = 10
+    	task.hyper['corati_budget'] = 20
+    	
     if task.hyper['true_likelihood'] == True:
         task.hyper['mat_file_name'] = 'true_lik'
 
@@ -809,5 +819,7 @@ if __name__ == "__main__":
     task.hyper['participant_shift'] = int(args.start) * task.hyper['n_participants'] if args.start else task.hyper['participant_shift']
     
     x = str(args.x) if args.x else 'empty'
+    if x == 'g':
+        task.hyper['n_participants'] = 100
     time.sleep(task.hyper['participant_shift'])
     sp.switch(task, x)

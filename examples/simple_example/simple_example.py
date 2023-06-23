@@ -146,7 +146,9 @@ class SimpleTask(BaseTask):
             'output_dim':               1,
             'participant_shift':        1,
             'model_sel_rule':		'map',
-            'record_posterior':	True
+            'record_posterior':		True,
+            'misspecify':		0,
+            'observ_noise':		0
 		}
         print(THIS_FILE)
         
@@ -233,5 +235,7 @@ if __name__ == "__main__":
     task.hyper['participant_shift'] = int(args.start) * task.hyper['n_participants'] if args.start else task.hyper['participant_shift']
     
     x = str(args.x) if args.x else 'empty'
+    if x == 'g':
+        task.hyper['n_participants'] = 100
     time.sleep(task.hyper['participant_shift'])
     sp.switch(task, x)

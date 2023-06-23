@@ -10,139 +10,15 @@ import os
 from copy import deepcopy
 from corati import cognitive_theory as ct
 from corati import synthetic_psychologist as sp
-from corati.base import BaseTask, PPOModel, BaseModel
+from corati.base import BaseTask, BaseModel
 from corati import test
 # -------------------------------------
 
-
-class Signal_detection_environment:
-
-	def __init__(self, hyper=None ):
-		self.hyper = hyper
-		self.action_names = ['present', 'absent', 'look']
-
-	def reset( self, pars ):
-		# feedback is provided in the 0th element of the array.
-		# get the next task from the array of pregenerated tasks.
-		f = pars['p_signal']['value']
-		assert f >= 0 and f <= 1, "The probability of a signal (p_signal) must be between 0 and 1."
-		self.present = np.random.choice([0,1], p=[(1-f),f] )
-		level = pars['signal_level']['value']
-		assert level >= 0, "The signal level must be greater than zero."
-		self.signal = self.present * level
-		self.steps_taken = 0
-		#self._state = np.array([ 0, self.signal, self.steps_taken ])
-		self._state = np.array([ 0, self.signal ])
-		self.stmls = self._state
-		self.hit = pars['hit']['value']
-		return self.stmls
-
-	def transition( self, rspns ):
-		# provide a record of the number of steps taken in the stimulus.
-		self.steps_taken += 1
-		#self.stmls[2] = self.steps_taken
-		# feedback is provided in the 0th element of the array.
-		feedback=0
-		# determine whether a correct response was given (signal present=1/absent=0)
-		if rspns==1 and self.present == 1:
-			self.stmls[feedback]=self.hit
-		elif rspns==0 and self.present == 0:
-			self.stmls[feedback]=1
-		elif rspns==1 and self.present == 0:
-			self.stmls[feedback]=0
-		elif rspns==0 and self.present == 1:
-			self.stmls[feedback]=0
-		else:
-			self.stmls[feedback]=0
-
-		# if a signal correct/absent response was given then done=True else response must have been '2' for look more.
-		if rspns == 1 or rspns == 0:
-			done = True
-		else: 
-			done = False
-		# update self.state
-		return self.stmls, done
-
-# -------------------------------------
 
 THIS_FILE = __file__
 
 
 # -------------------------------------
-
-class SignalDetection(PPOModel):
-	def __init__(self):
-		hit_bounds = [1,7]
-		signal_level_bounds = [0,4]
-		observ_limit_bounds = [2, 10]
-		sigma_bounds = [0.1,1]
-		step_cost = -0.5
-
-		file_dir, _ = os.path.split(os.path.realpath(__file__))
-
-		self.pars = {		
-			'sensor_noise': 		{'value':(np.random.uniform, sigma_bounds), 'bounds':sigma_bounds, 'levels':1},
-			'hit': 					{'value':(np.random.uniform, hit_bounds), 'bounds':hit_bounds, 'levels':5},
-			'miss': 				{'value':-2, 'bounds':[-1,-1], 'levels':1 },
-			'false_alarm': 			{'value':-2, 'bounds':[-1,-1], 'levels':1 },
-			'correct_rejection': 	{'value':2, 'bounds':[2,2], 'levels':1 },
-			'step_cost':		 	{'value':step_cost, 'bounds':[step_cost, step_cost], 'levels':1 },
-			'observ_limit':			{'value': (np.random.uniform, observ_limit_bounds), 'bounds': observ_limit_bounds,  'levels':20},
-			'signal_level':		 	{'value':(np.random.uniform, signal_level_bounds), 'bounds':signal_level_bounds, 'levels':20},
-			'p_signal':			 	{'value':0.5, 'bounds':[0.5,0.5], 'levels':1 }
-		}
-
-		max_episode_steps = 50
-
-		self.hyper = {
-			'feedback_noise':		True,
-			'n_training_timesteps':	int(1e5), ## 1e7
-			'max_episode_steps':	max_episode_steps, ##
-			'n_prediction_trials':	1, ## 3000
-			'output_dir':  			file_dir + '/sd_output/', ## #?
-			'pars_file':			THIS_FILE, ##
-			'small number':			1e-10,
-			'design_parameters':    ['observ_limit', 'signal_level'], ##
-			'policy_input':			['hit', 'sensor_noise'],
-			'prior':				[15, 2],
-			'prior_sd':				[5, 5],
-			'belief_bounds': 		[hit_bounds, signal_level_bounds], ##
-			'sigma_bounds':			[sigma_bounds, sigma_bounds], ##
-			'exception':			'signal_level', ##
-			'initial_learning_rate':0.001, ## 0.00001
-			'batch_size':			2048
-		}
-
-		self.agent = ct.Agent( self.hyper )
-		self.env = Signal_detection_environment()
-		self.parameters_of_interest = ['hit', 'sensor_noise']
-		self.name = 'SignalDetection'
-		super().__init__()	
-
-
-	def get_summary_statistics( self, data ):
-
-		if 'done' in data.columns:
-			data_done = data[ data['done']==True ]
-
-			s3 = data_done['steps'].mean() / 5.
-			s13 = data_done['correct'].mean()
-
-			result = [s13] # [TPs / 5., TNs / 5., FPs, FNs]
-			temp = []
-			for res in result:
-				res = 0 if math.isnan(res) else res
-				res = 1. if math.isinf(res) else res
-				temp.append(res)
-			result = temp
-			# print('\t= Summaries: ', result, len(data_done.index)) 
-			return result
-		else:
-			mean = data['outcome'].mean(axis=0) # np.mean(outcome, axis=0)
-			return [mean] # [mean] # , var]
-
-
-
 
 class ProbabilityRatio(BaseModel):
 	def __init__(self) -> None:
@@ -174,8 +50,12 @@ class ProbabilityRatio(BaseModel):
 		}
 
 		self.max_episode_steps = 50
+		
+		# This is an important distinction compared to the original experiments;
+		# we do not allow inference on two parameters, which makes inference model misspecified
 		self.parameters_of_interest = ['hit', 'sensor_noise', 'lower_thr', 'thr_gap']
 		self.name = 'ProbabilityRatio'
+		self.misspecify = False
 		super().__init__()
 
 
@@ -261,7 +141,7 @@ class SignalDetectionTask(BaseTask):
 			'n_participants':			5, #? 30
 			'output_dir':  				file_dir + '/output/', ## #?
 			'inference_budget':			100,
-			'corati_budget':			100, 
+			'corati_budget':			20, 
 			'model_selection_budget':   1000,
             'verification_budget':      1000,
 			'max_design_iterations':	5,
@@ -281,20 +161,28 @@ class SignalDetectionTask(BaseTask):
             'misspecify':		0,
             'observ_noise':		0
 		}
-
-		self.unified_model = SignalDetection()
-		self.model_priors = {'SignalDetection': .5, 'ProbabilityRatio': .5 }
+		self.model_priors = {'ProbabilityRatio': 1. }
 		self.design_parameters = ['observ_limit', 'signal_level']
 
 
 	def instantiate_model(self, model_name):
-		if model_name == 'SignalDetection':
-			model = deepcopy(self.unified_model)
-			model.hyper['n_prediction_trials'] = self.hyper['n_prediction_trials']
-		elif model_name == 'ProbabilityRatio':
+		if model_name == 'ProbabilityRatio':
 			model = ProbabilityRatio()
 			model.hyper['n_prediction_trials'] = self.hyper['n_prediction_trials']
+			model.parameters_of_interest = model.parameters_of_interest if self.hyper['misspecify'] == 0 else model.parameters_of_interest[:self.hyper['misspecify']]
 		model.max_episode_steps = 10
+		
+		pars = len(model.parameters_of_interest)
+		# if some of the parameters are excluded from inference, replace them with their expected value
+		if type(model.pars['hit']['value']) is tuple and pars == 0:
+			model.pars['hit']['value'] = 4
+		if type(model.pars['sensor_noise']['value']) is tuple and pars <= 1:
+			model.pars['sensor_noise']['value'] = 0.55	
+		if type(model.pars['lower_thr']['value']) is tuple and pars <= 2:
+			model.pars['lower_thr']['value'] = 0.25
+		if type(model.pars['thr_gap']['value']) is tuple and pars <= 3:
+			model.pars['thr_gap']['value'] = 0.25
+		
 		return model
 		
 
@@ -326,10 +214,6 @@ class SignalDetectionTask(BaseTask):
 		sp.plot_vic( pdf, roc_data, model.hyper, 'TP', 'FP', 'hit', np.mean, 'lower right', 'ROC curve' )
 		
 		pdf.close()
-
-
-	def train(self):
-		self.unified_model.train()
 
 	
 	def plot_participants( model ):
@@ -366,6 +250,8 @@ if __name__ == "__main__":
 	parser.add_argument('--ado')
 	parser.add_argument('--minebed')
 	parser.add_argument('--rule')
+	parser.add_argument('--misspecify')
+	parser.add_argument('--noise')
 	args = parser.parse_args()
 
 	task=SignalDetectionTask()
@@ -375,6 +261,8 @@ if __name__ == "__main__":
 	task.hyper['ado'] = args.ado=='True' if args.ado else task.hyper['ado']
 	task.hyper['minebed'] = args.minebed=='True' if args.ado else task.hyper['minebed']
 	task.hyper['model_sel_rule'] = args.rule if args.rule else task.hyper['model_sel_rule']
+	task.hyper['misspecify'] = int(args.misspecify) if args.misspecify else task.hyper['misspecify']
+	task.hyper['observ_noise'] = float(args.noise) if args.noise else task.hyper['observ_noise']
     
 	if task.hyper['true_likelihood'] == True:
 		task.hyper['mat_file_name'] = 'true_lik'
@@ -395,7 +283,9 @@ if __name__ == "__main__":
 	task.hyper['participant_shift'] = int(args.start) * task.hyper['n_participants'] if args.start else task.hyper['participant_shift']
     
 	x = str(args.x) if args.x else 'empty'
+	
 	if x == 'g':
 		task.hyper['n_participants'] = 100
+		
 	time.sleep(task.hyper['participant_shift'])
 	sp.switch(task, x)
