@@ -440,41 +440,10 @@ def show_design_GP(model, train_x, train_obj, bounds):
     plt.show()
 
 
-def print_logs(all_dict, output_dir='/'):
-    sns.set_theme()
-    sns.color_palette()
-    colors = ['orange', 'green', 'purple', 'brown', 'pink', 'olive', 'cyan']
-    legends = {'sp': 'BOSMOS', 'true_lik': 'True lik.',  'true_lik_rand': 'EIRD', \
-        'sp_rand': 'SP (rand d)', 'ado': 'ADO', 'minebed': 'MINEBED', 'sp_bic': 'BOSMOS (BIC)', \
-        'minebed_bic': 'MINEBED (BIC)'}
-        
+def print_logs(all_dict, output_dir='/'):    
     table_ticks = [0, 1, 3, 19, 99]
-
-    # ===================================
-    # statistics
-    # ===================================
-    # print('\n\n 1. behavior fitness: (dist, trials) ')
-    fig = plt.figure()
     for i, filename in zip(range(len(all_dict)), all_dict):
-        print('')
         print(filename)
-        if str(filename) == 'sp':
-            rand_model_fitness = all_dict[filename]['rand_model_fitness'].flatten()
-            true_model_fitness = all_dict[filename]['true_model_fitness'].flatten()
-            plt.axhline(y=np.mean(rand_model_fitness), color='r', linestyle='-.', label='Random model')
-            plt.axhline(y=np.mean(true_model_fitness), color='b', linestyle='-.', label='True model')
-            
-        rand_model_fitness = all_dict[filename]['rand_model_fitness'].flatten()
-        est_fitness_traj = all_dict[filename]['fitness_trajectories'][:, :, 2].transpose()  
-        x_ticks = range(1, len(est_fitness_traj) + 1)
-
-        mean, std = np.mean(est_fitness_traj, axis=1), np.std(est_fitness_traj, axis=1)
-        # print(np.shape(mean))
-        plt.plot(x_ticks, np.mean(est_fitness_traj, axis=1), color=colors[i], label=legends[filename])
-        plt.fill_between(x_ticks, mean - std, mean + std, color=colors[i], alpha=0.1)
-        # print('Behavioral fitness (mean +- std):')
-        # print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
-        
         dist_traj = all_dict[filename]['dist_trajectories'].transpose()[:, 1:]
         all_model_choices = all_dict[filename]['all_model_choices'].transpose()[:, 1:]
         true_models = all_dict[filename]['true_models']
@@ -486,12 +455,6 @@ def print_logs(all_dict, output_dir='/'):
         mask = np.array(mask).transpose()
         
         mean, std = np.mean(dist_traj, axis=1), np.std(dist_traj, axis=1)
-        # print('Complete parameter estimate error (mean +- std):')
-        # print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
-        
-        dist_traj[~mask] = np.nan
-        # print(str(dist_traj))
-        
         mean, std = np.nanmean(dist_traj, axis=1), np.nanstd(dist_traj, axis=1)
         print('Parameter estimate error (mean +- std):')
         print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std) if item_id in table_ticks ])
@@ -505,25 +468,6 @@ def print_logs(all_dict, output_dir='/'):
             print(key)
             print( [r'{m:.2f}'.format(m=float(m)/ np.sum(model_mask)) for item_id, m in zip(range(len(model_accuracy)), model_accuracy) if item_id in table_ticks ])
         
-        # print(np.shape(dist_traj), dist_traj[-1])
-        # print(np.shape(all_model_choices), all_model_choices[-1])
-        # print(np.shape(true_models), true_models)
-        # print(np.shape(mask), mask[-1])
-        
         times = all_dict[filename]['time'].flatten()
         m, s = np.mean(times), np.std(times)
         print( r'Time: {mean:.2f} $\pm$ {std:.2f}'.format(mean=m, std=s)  )
-
-    plt.xlim([1, len(est_fitness_traj)])
-    plt.xlabel('Trials (t)')
-    plt.ylabel('RMSE')
-    plt.tight_layout()
-    
-    handles,labels = plt.gca().get_legend_handles_labels()
-    sorted_legends = [x for x in sorted(labels)] # sort the labels based on the average which is on a list
-    sorted_handles = [x for _, x in sorted(zip(labels, handles))] # sort the handles based on the average which is on a list
-    plt.legend(sorted_handles,sorted_legends) # display the handles and the labels on the side
-    
-    # plt.savefig(output_dir + 'plot-1.png', dpi=300)
-    plt.close()
-

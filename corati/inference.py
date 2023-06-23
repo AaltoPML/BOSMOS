@@ -22,6 +22,7 @@ from torch.optim.lr_scheduler import StepLR
 from functools import partial
 
 def init_minebed(model, task, prior, key):
+    print('Using MINEBED for likelihood-free inference...')
     bounds = tuple(model.pars[task.design_parameters[-1]]['bounds'])
 
     numpy_prior = np.array([prior[key][par_key]['value'].to_numpy() for par_key in sorted(prior[key].keys())]).transpose()
@@ -316,18 +317,21 @@ def sample_posterior(post, elfi_sim, true_likelihood=None, data=None, model=None
     else:
         scaled_particles = particles
 
+    if true_likelihood is None:
+        print('Using BOSMOS for likelihood-free inference...')
+    else:
+        print('Using the true likelihood...')
+
     for i in range(20):    
         if true_likelihood is None:
-            print('Using likelihood-free inference')
             weights = post._unnormalized_likelihood(scaled_particles)
         else:
-            print('Using true likelihood')
             weights = true_likelihood(data, model, scaled_particles, expt)
 
         if np.sum(weights) == 0 or np.count_nonzero(weights==0) > 0.9 * len(weights):
             post.threshold = np.quantile(post.model.Y, (i + 1) / 20. )
-            print('WARNING: all samples are filtered out, increasing the threshold to ', post.threshold)
-            print('Adjustment: ', np.mean(post.model.Y),  np.count_nonzero(weights==0), 0.01 * len(weights))
+            # print('WARNING: all samples are filtered out, increasing the threshold to ', post.threshold)
+            # print('Adjustment: ', np.mean(post.model.Y),  np.count_nonzero(weights==0), 0.01 * len(weights))
             # print(weights)
         else:
             break
@@ -344,7 +348,7 @@ def sample_posterior(post, elfi_sim, true_likelihood=None, data=None, model=None
         resampled_theta = copy.deepcopy(particles[resample_index,:])
         theta_posterior = pd.DataFrame.from_records(resampled_theta, columns = elfi_sim.keys)
     else:
-        print('\n\n==== The weights are zeros, returning the previous posterior ====\n\n')
+        # print('\n\n==== The weights are zeros, returning the previous posterior ====\n\n')
         theta_posterior = pd.DataFrame.from_records(particles, columns = elfi_sim.keys)
     particles = pd.DataFrame.from_records(particles, columns=elfi_sim.keys)
     return theta_posterior, particles, weights
@@ -488,7 +492,7 @@ def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, 
             random_state=post.random_state)
         
         post.threshold = np.max([minval, np.min(post.model.Y)])
-    print('Extracting posterior...')
+    print('Extracting the posterior...')
 
     post_samples, particles, weights = sample_posterior(post, elfi_sim, true_lik, data, model, expt, None)
     minloc = find_kde_peak(post_samples)
@@ -503,6 +507,8 @@ def infer_parameters(data, model, theta, expt, participant=None, true_lik=None, 
 
         ms, vs = post.model._gp.predict(theta_samples)
         ys = y_scaler.inverse_transform(ms)
+    else:
+        ys = []
 
     plot_theta = copy.deepcopy(theta)
     particles_dict = copy.deepcopy(theta) 

@@ -109,10 +109,9 @@ def corati( task, n_participants ):
 		start = time.time() 
 		
 		# conduct full model selection for one participant
-		posterior, estimate, model_choices, estimate_log, model_post, designs, fitness_dist, particles_history = design_conduct_infer( task, participants[p], participants) 
+		posterior, estimate, model_choices, estimate_log, model_post, designs, particles_history = design_conduct_infer( task, participants[p], participants) 
 		
 		# the rest of the loop is processing and storing performance information:
-		fitness_dists.append(fitness_dist)
 		all_designs.append(designs)
 		if len(task.model_priors) > 1:
 			model_posteriors.append(model_post)
@@ -122,10 +121,6 @@ def corati( task, n_participants ):
 		estimated_pars = copy.deepcopy( estimated_model.pars)
 		for key in estimated_model.parameters_of_interest:
 			estimated_pars[key]['value'] = estimate[key]
-		rand_model_verif, true_model_verif, est_model_verif = verify_model(task, participants[p], estimated_pars, model_choices[-1])
-		rand_model_verifs.append(rand_model_verif)
-		true_model_verifs.append(true_model_verif)
-		est_model_verifs.append(est_model_verif)
 		
 		# store the history of estimates and particles (beliefs about parameters and models)
 		temp_trajectory = []
@@ -152,10 +147,12 @@ def corati( task, n_participants ):
 				# assign loss to 1. if the estimated model is wrong (this value is not used anywhere, but here to keep the loss variable as a float array)
 				temp_dist.append(1.)
 			else:
+				temp_model = task.instantiate_model(model_choice)
+				
 				# calculate Euclidian distance between estimated vs true parameters
-				bounds = [ participants[p].pars[key]['bounds'] for key in participants[p].parameters_of_interest ]
-				cur_estimate = [estimate[key] for key in participants[p].parameters_of_interest] 
-				distance = np.linalg.norm((np.asarray(cur_estimate) - np.asarray(all_ground_truth[-1][1]))/ (np.max(bounds) - np.min(bounds)) )
+				bounds = [ participants[p].pars[key]['bounds'] for key in temp_model.parameters_of_interest ]
+				cur_estimate = [estimate[key] for key in temp_model.parameters_of_interest] 
+				distance = np.linalg.norm((np.asarray(cur_estimate) - np.asarray(all_ground_truth[-1][1][:len(temp_model.parameters_of_interest)]))/ (np.max(bounds) - np.min(bounds)) )
 				temp_dist.append(distance)
 		
 		# making sure that the loss array is consistent with the allocated design budget
@@ -177,19 +174,15 @@ def corati( task, n_participants ):
 		design_bounds = participants[-1].pars[design_name]['bounds']
 		# plot_designs(all_designs, design_bounds, output_dir)
 		
-	# plot_convergence( dists, output_dir)
-	# plot_behavioral_fit(rand_model_verifs, true_model_verifs, est_model_verifs, output_dir)
-	# plot_behavioral_convergence(fitness_dists, output_dir)
 	print('\nEstimates: ', all_estimates, '\nGround truth: ', all_ground_truth)
 
 	# save performance data for vizualization
-	save_file_name = task.hyper['mat_file_name'] + '-' + str(task.hyper['participant_shift']) \
+	noise = '_' + str(task.hyper['observ_noise']) if task.hyper['observ_noise'] > 0 else ''
+	misspecif = '_' + str( task.hyper['misspecify'] ) if task.hyper['misspecify'] > 0 else ''  
+	
+	save_file_name = task.hyper['mat_file_name'] + noise + misspecif + '-' + str(task.hyper['participant_shift']) \
 		+ '-' + str(n_participants+participant_shift) + '.mat'
 	mdict = {
-		'rand_model_fitness': rand_model_verifs, 
-		'true_model_fitness': true_model_verifs,
-		'est_model_fitness':  est_model_verifs,
-		'fitness_trajectories': fitness_dists,
 		'dist_trajectories':	dists,
 		'true_models': 			true_models,	
 		'model_posterior_keys': list(task.model_priors.keys()) ,
@@ -246,7 +239,7 @@ def design_conduct_infer( task, participant, participants):
 	
 	# proceed with model selection until simulation budget is exhausted
 	for i in range(budget):
-		print(f'\nIteration {i} ===')
+		print(f'\nIteration {i+1}/{budget}:\n')
 		
 		# 1: select the design for the experiment
 		if task.hyper['minebed'] == True:
@@ -263,9 +256,9 @@ def design_conduct_infer( task, participant, participants):
 		# 2: collect the data at the selected design location expt
 		data = conduct_experiment( participant, expt )
 		
-		# corrupt observed data with noise for testing purposes
-		# k = 0.4 # specify the percentage of noise
-		# data = corrupt_data(participants, participant, data, k, expt, random=False)
+		# corrupt observed data with noise for misspecification experiments from the Supplemenet
+		if task.hyper['observ_noise'] > 0:
+			data = corrupt_data(participants, participant, data, task.hyper['observ_noise'], expt, random=True)
 		
 		# 3: update current beliefs about the models and parameters
 		estimate = dict()
@@ -323,23 +316,24 @@ def design_conduct_infer( task, participant, participants):
 				true_lik = task.get_likelihood if task.hyper['true_likelihood'] else None
 				
 				# assign budget to 1 if true likelihood is used (one simulation is required to get the format of responses automatically)
-				budget = 1 if task.hyper['true_likelihood'] else task.hyper['inference_budget']
-				print(key, parameter_particles[key])
+				inf_budget = 1 if task.hyper['true_likelihood'] else task.hyper['inference_budget']
+				# print(key, parameter_particles[key])
 				
 				# run parameter inference procedure (BOLFI is used if true likelihood is not used) 
 				parameter_particles[key], estimate[key], weights[key], ys[key] = infer_parameters( data, model, parameter_particles[key], expt, participant, 
-											true_lik=true_lik, budget=budget, it=i+1) # Alex prior=prior[cur_model_choice]
+											true_lik=true_lik, budget=inf_budget, it=i+1)
 				
 				# this part calculates true marginal likelihood in simple_example for the debugging purposes
 				if model.name == 'pos_mean':
 					data_ = data['outcome'][0]
 					true_marg_lkl =  (-expt) * ( scipy.special.erf((np.sqrt(2)*data_ - 5*np.sqrt(2)) / (2*expt)) - scipy.special.erf(data_ / (np.sqrt(2)*expt)) ) / (2*np.abs(expt))
-					print(f'True marginal likelihood: { true_marg_lkl }')
+					# print(f'True marginal likelihood: { true_marg_lkl }')
 				elif model.name == 'neg_mean':
 					data_ = data['outcome'][0]
 					true_marg_lkl =  (expt) * ( scipy.special.erf((np.sqrt(2)*data_ + 5*np.sqrt(2)) / (2*expt)) - scipy.special.erf(data_ / (np.sqrt(2)*expt)) ) / (2*np.abs(expt))
-					print(f'True marginal likelihood: {true_marg_lkl}')
+					# print(f'True marginal likelihood: {true_marg_lkl}')
 		
+		print('Estimated parameters:', estimate)
 		# calculate and apply the marginal likelihood:
 		if task.hyper['minebed'] == False and task.hyper['true_likelihood'] == False:
 			# determine the tolerance threshold as the minimum expectation among the models
@@ -347,7 +341,7 @@ def design_conduct_infer( task, participant, participants):
 				exps[key] = np.mean(ys[key])
 			epsilon_m = min( exps.values() )
 			
-			print(f'Epsilon for the marginal likelihood: {epsilon_m}')
+			# print(f'Epsilon for the marginal likelihood: {epsilon_m}')
 			for key in list(ys.keys()):
 				kappa_array = [ scipy.stats.norm.pdf( x, 0, epsilon_m + 1e-10)  for x in ys[key]]
 				weights[key] *= np.mean(kappa_array)
@@ -381,11 +375,13 @@ def design_conduct_infer( task, participant, participants):
 			else:
 				break
 		else: 
-			parameter_particles, _, done = resample_particles(parameter_particles, weights)
+			parameter_particles, _, done, weights = resample_particles(parameter_particles, weights)
+			model_choice = list(model_posterior.keys())[0]
+			model_choices.append( model_choice )
 		
 		# to save memory, we store posteriors only for the steps that we will use for vizualization
 		if i in [0, 1, 3, 19, 99] and task.hyper['record_posterior']:
-			print('Record history')
+			print('Recording history...')
 			particle_set = copy.deepcopy(parameter_particles)
 			formatted_history = []
 			for model_key in particle_set:
@@ -402,16 +398,7 @@ def design_conduct_infer( task, participant, participants):
 				else:
 					model = task.instantiate_model(key)
 					minebed_solvers[key] = init_minebed(model, task, parameter_particles, key)
-		
-		# evaluate the estimated model vs random model and vs true model
-		estimated_model = task.instantiate_model(model_choice)
-		estimated_pars = copy.deepcopy( estimated_model.pars)
-		for key in estimated_model.parameters_of_interest:
-			estimated_pars[key]['value'] = estimate[model_choice][key]		
-		random_par_dist, true_par_dist, sel_par_dist = verify_model(task, participant, estimated_pars, model_choice)
-		
 		# store evaluation
-		fitness_dist.append([random_par_dist, true_par_dist, sel_par_dist])
 		estimates.append( estimate[model_choice] )
 			
 	print('Model choices: ', model_choices)
@@ -422,7 +409,7 @@ def design_conduct_infer( task, participant, participants):
 		# plot_model_convergence(model_posteriors, participant)
 		pass
 
-	return parameter_particles, estimates[-1], model_choices, estimates, model_posteriors, designs, fitness_dist, particles_history
+	return parameter_particles, estimates[-1], model_choices, estimates, model_posteriors, designs, particles_history
 
 
 # -------------------------------------
@@ -430,21 +417,22 @@ def design_conduct_infer( task, participant, participants):
 def corrupt_data(participants, true_model, data, k, expt, random=False):
 	'''
 	Corrupts data with noise, where k regulates how much data needs to be corrupted.
-	WARNING: this function was used in early stages of development and was not tested 
-	for cases other than signal_detection.
+	This function works only for risky choice.
 	'''
 	print(f'Corrupt {k*100}% of data...')
 	trial_num = len(data)
 	corrupt_num = int(trial_num * k)
 	corrupt_data = []
-
+	print('Original: ', data)
 	if random:
 		# generates random data according to the response space bounds
 		rng = np.random.default_rng()
-		steps = rng.integers(1, 11, size=(corrupt_num, 1)).flatten()
+		# steps = rng.integers(1, 11, size=(corrupt_num, 1)).flatten()
 		correct = rng.integers(0, 2, size=(corrupt_num, 1)).flatten()
-		done = np.array([[True]] * corrupt_num).flatten()
-		corrupt_data = pd.DataFrame(data=np.array([steps, correct, done]).transpose(), columns=['steps', 'correct', 'done'])
+		# done = np.array([[True]] * corrupt_num).flatten()
+		corrupt_data = pd.DataFrame(data=np.array([correct]).transpose(), columns=['outcome'])
+		
+		# pd.DataFrame(data=np.array([steps, correct, done]).transpose(), columns=['steps', 'correct', 'done'])
 	else:	
 		# generate noise from alternative participant models
 		for participant in participants:
@@ -453,10 +441,10 @@ def corrupt_data(participants, true_model, data, k, expt, random=False):
 				corrupt_data_from_model = conduct_experiment( participant, expt ) 
 				corrupt_data.append(corrupt_data_from_model)
 		corrupt_data = pd.concat(corrupt_data).sample(n=corrupt_num)
-		
 	# apply corruption
 	data = data.sample(frac=(1 - k))
 	data = pd.concat([data, corrupt_data]).sample(frac=1.)
+	print('Corrupted: ', data)
 	return data
 
 
@@ -506,7 +494,7 @@ def resample_particles(parameter_particles, weights):
 		for model_key in list(parameter_particles[model_name].keys()):
 			if isinstance(parameter_particles[model_name][model_key]['value'], pd.Series):
 				parameter_particles[model_name][model_key]['value'] = parameter_particles[model_name][model_key]['value'].take(resample_indexes_for_model) # .reset_index()
-				print(model_name, len(parameter_particles[model_name][model_key]['value']))
+				# print(model_name, len(parameter_particles[model_name][model_key]['value']))
 	
 	# normalize the model posterior
 	normalizing_constant = sum(list(model_posterior.values()))
@@ -549,12 +537,12 @@ def design_experiment( task, parameter_particles, model_priors, weights=None, pa
 			if i != -1:
 				models[i].pars = assign_parameter_sample(models[i], parameter_particles[model_name])
 
-	print('Designing expereiments...')
+	print('Designing an experiment...')
 	bounds = get_design_bounds(models[0])
 	
 	# conduct design optimization according with the specified method
 	if task.hyper['ado']:
-		print('Using ADO...')
+		print('Using adaptive design optimization...')
 		new_parameter_particles = deepcopy(parameter_particles)
 		new_model_priors = deepcopy(model_priors)
 		for model_name in model_priors:
@@ -568,7 +556,7 @@ def design_experiment( task, parameter_particles, model_priors, weights=None, pa
 			ado=True, likelihood_func=task.get_likelihood, instantiate_func=task.instantiate_model, \
 				model_priors=new_model_priors, parameter_particles=new_parameter_particles, weights=weights)
 	else:
-		print('Using the default method...')
+		print('Using the default optimization for the chosen method...')
 		designer = Exp_designer_single( init_sample, max_iter, batch_size, bounds)
 		
 	# extract the design location
@@ -584,7 +572,7 @@ def conduct_experiment( model, expt, verbose=True ):
 	Conduct the experiments using the synthetic participant (model) at the design location expt
 	'''
 	if verbose:
-		print(f'Conduct experiment {expt}.')
+		print(f'Conducting an experiment with the design vector {expt}.')
 	output_dir = model.hyper['output_dir']
 	# set parameters for expt
 	keys = model.hyper['design_parameters'] 
@@ -769,7 +757,7 @@ def verify_saved_models(task, all_dict):
 				participant.max_episode_steps = 10
 				data_part = conduct_experiment( participant, expt, False )
 				data_part = participant.get_summary_statistics(data_part)
-					
+
 				j = -1
 				sel_par_dist[-1].append([])
 				for model_choice, estimate in zip(all_model_choices[i], all_estimates[i]):
@@ -790,10 +778,10 @@ def verify_saved_models(task, all_dict):
 					sel_par_dist[-1][-1].append(np.linalg.norm(np.asarray(data_part)-np.asarray(sel_par_data)))
 			sel_par_dist[-1] = np.mean(sel_par_dist[-1], axis=0)
 				
-		print('Mean distance for participant:', np.shape(sel_par_dist))
+		# print('Mean distance for participant:', np.shape(sel_par_dist))
 		mean, std = np.mean(sel_par_dist, axis=0), np.std(sel_par_dist, axis=0)
 		print( [r"{mean:.2f} $\pm$ {std:.2f}".format(mean=m, std=s) for item_id, m, s in zip(range(len(mean)), mean, std)])
-		print(f'Mean distance for participant: {np.mean(sel_par_dist)} $pm$ {np.std(sel_par_dist)} ' )
+		# print(f'Mean distance for participant: {np.mean(sel_par_dist)} $pm$ {np.std(sel_par_dist)} ' )
 
 # -------------------------------------
 
@@ -837,12 +825,7 @@ def switch(model, x='empty'):
 		print("")
 		print(f'RET  	explore')
 		print(f't 		train')
-		print(f'v		verify')
-		print(f'm		train_multiple_models')
-		print(f'p 		predict')
-		print(f'l 		plot')
-		print(f'tpl		train predict plot')
-		print(f'o 		open plots')
+		print(f'v		verify')	
 		print(f'g 		generate synthethetic participants')
 		print(f'c 		corati')
 		print(f'q 		quit')
@@ -855,14 +838,8 @@ def switch(model, x='empty'):
 			model.train()
 		elif x == 'p':
 			model.predict()
-		elif x == 'tpl':
-			model.train()
-			model.predict()
-			model.plot()
-		elif x == 'm':
-			train_multiple_models(10, model)
-		elif x == 'l':
-			methods = ['sp', 'true_lik', 'sp_rand', 'true_lik_rand', 'ado', 'minebed', 'sp_bic', 'minebed_bic'] 
+		elif x == 'v':
+			methods = ['sp_0.1', 'sp_0.2', 'sp_0.3', 'sp_0.4', 'sp_0.5', 'sp_0.6', 'sp_0.9', 'sp_1', 'sp_2', 'sp_3', 'sp_4', 'sp', 'true_lik', 'sp_rand', 'true_lik_rand', 'ado', 'minebed', 'sp_bic', 'minebed_bic'] 
 
 			# load saved models and generate plots / evaluate models
 			cwd = os.path.dirname(os.path.realpath(__file__))
@@ -872,43 +849,46 @@ def switch(model, x='empty'):
 			
 			# aggregate all stored information about performance of models in one dictionary
 			vstack_keys = ['fitness_trajectories', 'model_posterior', 'dist_trajectories', 'all_designs', 'all_model_choices']
+			print('Performance after 1, 2, 4, 20, 100 design trials:')
 			for filename in sorted_paths:
-				print(filename)
+				# print(filename)
 				f = scipy.io.loadmat(filename)
 				for meth in methods:
 					if meth + '-' in str(filename): 
-						if meth in all_files:
-							for key in all_files[meth]:
+						meth_key = meth.replace("sp", "bosmos")
+						if meth_key in all_files:
+							for key in all_files[meth_key]:
 								# print(filename, meth, key, np.shape(all_files[meth][key]), np.shape(f[key]))
 								if key == 'model_posterior_keys' or  key == 'model_variance':
 									continue
 								elif key in vstack_keys:
-									all_files[meth][key] = np.vstack((all_files[meth][key], f[key])) # np.concatenate((all_files[meth][key], f[key]), axis=1)
+									all_files[meth_key][key] = np.vstack((all_files[meth_key][key], f[key])) # np.concatenate((all_files[meth][key], f[key]), axis=1)
 								elif key == 'true_models':
-									pos = str(filename).split('.')[0].split('-')[1:3]
-									# print(pos)
+									pos = str(filename).split('.m')[0].split('-')[1:3]
+									
 									temp = f[key][int(pos[0]):int(pos[1])]
-									all_files[meth][key] = np.hstack((all_files[meth][key], temp)) 
+									all_files[meth_key][key] = np.hstack((all_files[meth_key][key], temp)) 
 								else:
 									if key == 'all_estimates' or key == 'final_estimates' or key == 'all_ground_truth':
-										all_files[meth][key] = all_files[meth][key] if type(all_files[meth][key]) == list else all_files[meth][key].tolist()
+										all_files[meth_key][key] = all_files[meth_key][key] if type(all_files[meth_key][key]) == list else all_files[meth_key][key].tolist()
 										f[key] = f[key].tolist()
-										all_files[meth][key] += f[key]
+										all_files[meth_key][key] += f[key]
 									else:
-										all_files[meth][key] = np.hstack((all_files[meth][key], f[key]))
+										all_files[meth_key][key] = np.hstack((all_files[meth_key][key], f[key]))
 									# print( np.shape(all_files[meth][key]), np.shape(f[key]))
 						else:
-							all_files[meth] = f
-							del all_files[meth]['__header__']
-							del all_files[meth]['__version__']
-							del all_files[meth]['__globals__']
-			print(Path('').cwd())
+							all_files[meth_key] = f
+							del all_files[meth_key]['__header__']
+							del all_files[meth_key]['__version__']
+							del all_files[meth_key]['__globals__']
+			
 			only_plot = False
 			# either plot or also calculate behavioural fitness
 			if only_plot:
 				print_logs(all_files, output_dir=str(Path('').cwd()) + '/' )
 			else:
 				print_logs(all_files, output_dir=str(Path('').cwd()) + '/' )
+				print('\nBehavioural fitness (mean +- std):')
 				verify_saved_models(model, all_files)
 		elif x == 'g':
 			generate_synthetic_participants( n_participants, model )
@@ -916,11 +896,6 @@ def switch(model, x='empty'):
 			corati(model, n_participants)
 			print(f'Running time: { (time.time() - start_time) / 3600. } hours' )
 			start_time = time.time()
-		elif x == 'o':
-			output_dir = model.hyper['output_dir']
-			os.system(f'open {output_dir}model/png/*.png')
-		elif x == 'v':
-			verify(model, n_participants)
 		elif x == 'q':
 			input_flag = False
 		else:

@@ -88,8 +88,8 @@ class BaseModel():
 
         self.hyper = {
             'output_dir':  			    'sd_output/',   # save directory
-            'design_parameters':        []              # list of design parameters 
-            'policy_input':             []              # list of parameters that control the user models 
+            'design_parameters': 	    [], # parameters that are used for designs
+			'n_prediction_trials':	    1
         }
 
         self.pars = {
@@ -98,6 +98,9 @@ class BaseModel():
                 'bounds': [0,1],                    # an interval of admissable solutions
                 'levels': 5}  # number of discretization levels (required only for RL models)
         }
+
+        self.name = 'string' # name of the model
+        self.parameters_of_interest = ['hit', 'sensor_noise', 'lower_thr', 'thr_gap'] # parameters that need to be inferred
         '''
         self.pars_sample = self.sample_model_parameters( self.pars )
 
@@ -185,22 +188,33 @@ class BaseTask():
         Example:
 
         self.hyper = {
-			'n_participants':			10,
-			'output_dir':  				file_dir + '/sd_output/', ## #?
+			'n_participants':			5, 
+			'output_dir':  				file_dir + '/output/', ## #?
 			'inference_budget':			100,
-			'corati_budget':			20,
-			'model_selection_budget':   100,
-			'verification_budget':  	1000,
+			'corati_budget':			100, 
+			'model_selection_budget':   1000,
+            'verification_budget':      1000,
 			'max_design_iterations':	5,
 			'num_design_models':		10,
 			'init_design_samples': 		10,
 			'design_batch_size': 		1,
-			'n_prediction_trials': 		5
+			'n_prediction_trials': 		1,
+			'mat_file_name':            'true_lik',
+            'random_design':            False,
+            'true_likelihood':          False,
+            'ado':                      False,
+            'minebed':                  False,
+            'output_dim':               1,
+            'participant_shift':        1,
+            'model_sel_rule':		'map',
+            'record_posterior':		True,
+            'misspecify':		0,
+            'observ_noise':		0
 		}
 
         self.unified_model = None # a unified (ensemble) model if available
         self.model_priors = None # priors for models (a single element if only one model)
-        self.parameters_of_interest = None # parameters, which needs to be inferred
+        self.design_parameters = [] # list of design parameters 
         '''
         pass
 
@@ -345,7 +359,13 @@ class PPOModel(BaseModel, gym.Env):
         info={}
 		# check whether max steps reached.
         self.steps += 1
-        if self.steps == round(self.pars['observ_limit']['value']): 
+
+        if type(self.pars['observ_limit']['value']) is tuple:
+            max_steps = self.hyper['max_episode_steps']
+        else:
+            max_steps = round(self.pars['observ_limit']['value'])
+
+        if self.steps == max_steps: 
             self.done=True
             self.max_steps_count += 1
 			#print("WARNING: max steps reached.")
