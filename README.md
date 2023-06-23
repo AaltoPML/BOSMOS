@@ -102,7 +102,7 @@ This creates an `output` folder in the example's directory with a `synthetic_par
 > Note: To speed up this step, you can modify the task hyperparameters `task.hyper` set in their respective test case files. For instance, generating synthetic participants for the signal sequential task can take hours. You can reduce `n_training_timesteps`, `n_prediction_trials` (which may affect the quality of participant models), and `n_participants` hyperparameters (line 399 in `signal_detection_sequential.py`) to speed up the generation of synthetic participants.
 
 
-## Pre-Training an Inference Model for Signal Detection
+## Pre-Training Inference Model for Signal Detection
 
 Before conducting inference, pre-training the PPO model for the signal detection task is necessary. Use the following command for pre-training:
 
