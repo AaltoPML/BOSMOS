@@ -280,9 +280,9 @@ You can print the results as described in the previous sections.
 @article{aushev2023online,
   title={Online simulator-based experimental design for cognitive model selection},
   author={Aushev, Alexander and Putkonen, Aini and Clarte, Gregoire and Chandramouli, Suyog and Acerbi, Luigi and Kaski, Samuel and Howes, Andrew},
-  journal={arXiv preprint arXiv:2303.02227},
-  year={2023}
+  journal={Computational Brain \& Behavior},
+  year={2023},
+  publisher={Springer}
 }
 ```
-
-the arxiv version of the paper: https://arxiv.org/abs/2303.02227
+Full article: https://link.springer.com/article/10.1007/s42113-023-00180-7
